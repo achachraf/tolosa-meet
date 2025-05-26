@@ -14,6 +14,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { categories } from '../data/mockData';
+import firestore from '@react-native-firebase/firestore';
 
 const CreateEventScreen = () => {
   const [title, setTitle] = useState('');
@@ -50,30 +51,46 @@ const CreateEventScreen = () => {
     return true;
   };
 
-  const handleCreateEvent = () => {
+  const handleCreateEvent = async () => {
     if (validateForm()) {
-      // In a real app, we would send this data to a backend
-      Alert.alert(
-        'Événement créé',
-        'Votre événement a été créé avec succès!',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Reset form
-              setTitle('');
-              setDescription('');
-              setDate('');
-              setTime('');
-              setLocation('');
-              setAddress('');
-              setCategory('');
-              setPrice('');
-              setMaxAttendees('');
+      try {
+        await firestore().collection('events').add({
+          title,
+          description,
+          date,
+          time,
+          location,
+          address,
+          category,
+          price: price ? parseFloat(price) : 0,
+          maxAttendees: maxAttendees ? parseInt(maxAttendees) : null,
+          attendees: 0,
+          isJoined: false,
+        });
+        Alert.alert(
+          'Événement créé',
+          'Votre événement a été créé avec succès!',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Reset form
+                setTitle('');
+                setDescription('');
+                setDate('');
+                setTime('');
+                setLocation('');
+                setAddress('');
+                setCategory('');
+                setPrice('');
+                setMaxAttendees('');
+              },
             },
-          },
-        ]
-      );
+          ]
+        );
+      } catch (error) {
+        Alert.alert('Erreur', 'Une erreur est survenue lors de la création de l\'événement.');
+      }
     }
   };
 

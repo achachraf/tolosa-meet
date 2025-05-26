@@ -24,6 +24,7 @@ Une application mobile pour découvrir et organiser des événements dans la vil
 - React Navigation
 - Expo Vector Icons et Linear Gradient
 - React Native Paper
+- Firebase (Firestore, Authentication, Storage)
 
 ## Installation et lancement
 
@@ -48,14 +49,21 @@ Une application mobile pour découvrir et organiser des événements dans la vil
    yarn install
    ```
 
-3. Lancez l'application :
+3. Configurez Firebase :
+   - Créez un projet Firebase sur [Firebase Console](https://console.firebase.google.com/)
+   - Ajoutez une application Android et/ou iOS à votre projet Firebase
+   - Suivez les instructions pour obtenir le fichier `google-services.json` (Android) et/ou `GoogleService-Info.plist` (iOS)
+   - Placez ces fichiers dans les répertoires appropriés de votre projet (`android/app` pour `google-services.json` et `ios/Runner` pour `GoogleService-Info.plist`)
+   - Configurez Firestore, Authentication et Storage dans la console Firebase
+
+4. Lancez l'application :
    ```
    npm start
    # ou
    yarn start
    ```
 
-4. Scannez le QR code avec l'application Expo Go sur votre appareil mobile ou utilisez un émulateur.
+5. Scannez le QR code avec l'application Expo Go sur votre appareil mobile ou utilisez un émulateur.
 
 ## Utilisation
 
@@ -69,7 +77,6 @@ Une application mobile pour découvrir et organiser des événements dans la vil
 - Intégration d'une carte pour visualiser les événements géographiquement
 - Système de notification pour les rappels d'événements
 - Fonctionnalités sociales pour inviter des amis
-- Backend avec authentification et stockage cloud
 
 ## Auteurs
 
