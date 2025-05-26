@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   FlatList,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -15,7 +16,8 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { events } from '../data/mockData';
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
@@ -24,21 +26,42 @@ type ProfileScreenNavigationProp = NativeStackNavigationProp<
 
 const ProfileScreen = () => {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
+  const [user, setUser] = useState(null);
+  const [attendingEvents, setAttendingEvents] = useState([]);
+  const [createdEvents, setCreatedEvents] = useState([]);
 
-  // Mock user data
-  const user = {
-    name: 'Thomas Dubois',
-    email: 'thomas.dubois@email.com',
-    avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=300',
-    joinedDate: 'Avril 2023',
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const currentUser = auth().currentUser;
+      if (currentUser) {
+        const userDoc = await firestore().collection('users').doc(currentUser.uid).get();
+        if (userDoc.exists) {
+          setUser(userDoc.data());
+        }
+      }
+    };
+
+    const fetchEvents = async () => {
+      const eventsCollection = await firestore().collection('events').get();
+      const eventsData = eventsCollection.docs.map(doc => doc.data());
+
+      setAttendingEvents(eventsData.filter(event => event.attendees.includes(user?.uid)));
+      setCreatedEvents(eventsData.filter(event => event.organizerId === user?.uid));
+    };
+
+    fetchUserData();
+    fetchEvents();
+  }, [user?.uid]);
+
+  const handleLogout = async () => {
+    try {
+      await auth().signOut();
+      navigation.navigate('HomeTabs');
+    } catch (error) {
+      Alert.alert('Erreur', 'Une erreur est survenue lors de la déconnexion.');
+    }
   };
 
-  // Get events the user is attending (where isJoined is true)
-  const attendingEvents = events.filter((event) => event.isJoined);
-  
-  // Get events the user has created (mock data - in a real app this would come from backend)
-  const createdEvents = [events[0], events[3]]; // Just using a couple events as examples
-  
   const renderEventItem = ({ item }) => (
     <TouchableOpacity
       style={styles.eventCard}
@@ -77,11 +100,11 @@ const ProfileScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.profileHeader}>
-          <Image source={{ uri: user.avatar }} style={styles.avatar} />
+          <Image source={{ uri: user?.avatar }} style={styles.avatar} />
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>{user.name}</Text>
-            <Text style={styles.userEmail}>{user.email}</Text>
-            <Text style={styles.userJoinedDate}>Membre depuis {user.joinedDate}</Text>
+            <Text style={styles.userName}>{user?.name}</Text>
+            <Text style={styles.userEmail}>{user?.email}</Text>
+            <Text style={styles.userJoinedDate}>Membre depuis {user?.joinedDate}</Text>
           </View>
         </View>
 
@@ -147,7 +170,7 @@ const ProfileScreen = () => {
         </View>
 
         <View style={styles.logoutContainer}>
-          <TouchableOpacity style={styles.logoutButton}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <MaterialIcons name="exit-to-app" size={20} color="#ff4757" />
             <Text style={styles.logoutText}>Déconnexion</Text>
           </TouchableOpacity>

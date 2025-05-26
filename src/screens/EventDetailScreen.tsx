@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import { RouteProp } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { events } from '../data/mockData';
+import firestore from '@react-native-firebase/firestore';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import MapView from '../components/MapView';
 
@@ -26,8 +26,21 @@ type Props = {
 
 const EventDetailScreen = ({ route }: Props) => {
   const { eventId } = route.params;
-  const event = events.find((e) => e.id === eventId);
-  const [isJoined, setIsJoined] = useState(event?.isJoined || false);
+  const [event, setEvent] = useState(null);
+  const [isJoined, setIsJoined] = useState(false);
+
+  useEffect(() => {
+    const fetchEvent = async () => {
+      const eventDoc = await firestore().collection('events').doc(eventId).get();
+      if (eventDoc.exists) {
+        const eventData = eventDoc.data();
+        setEvent(eventData);
+        setIsJoined(eventData.isJoined);
+      }
+    };
+
+    fetchEvent();
+  }, [eventId]);
 
   if (!event) {
     return (
@@ -56,7 +69,7 @@ const EventDetailScreen = ({ route }: Props) => {
     Linking.openURL(url);
   };
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
     if (event.maxAttendees && event.attendees >= event.maxAttendees && !isJoined) {
       Alert.alert(
         'Événement complet',
@@ -67,7 +80,21 @@ const EventDetailScreen = ({ route }: Props) => {
     }
 
     setIsJoined(!isJoined);
-    
+
+    try {
+      await firestore().collection('events').doc(eventId).update({
+        attendees: isJoined ? event.attendees - 1 : event.attendees + 1,
+        isJoined: !isJoined,
+      });
+      setEvent((prevEvent) => ({
+        ...prevEvent,
+        attendees: isJoined ? prevEvent.attendees - 1 : prevEvent.attendees + 1,
+        isJoined: !isJoined,
+      }));
+    } catch (error) {
+      Alert.alert('Erreur', 'Une erreur est survenue lors de l\'inscription.');
+    }
+
     if (!isJoined) {
       Alert.alert(
         'Inscription confirmée',
