@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
+import { ActivityIndicator, View } from 'react-native';
 
 // Import screens
 import HomeScreen from '../screens/HomeScreen';
@@ -10,19 +11,15 @@ import EventDetailScreen from '../screens/EventDetailScreen';
 import ExploreScreen from '../screens/ExploreScreen';
 import CreateEventScreen from '../screens/CreateEventScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import AuthScreen from '../screens/AuthScreen';
+import AdminDashboardScreen from '../screens/AdminDashboardScreen';
+import AdminUsersScreen from '../screens/AdminUsersScreen';
+import AdminModerationScreen from '../screens/AdminModerationScreen';
 
-// Define types for navigation
-export type RootStackParamList = {
-  HomeTabs: undefined;
-  EventDetail: { eventId: string };
-};
+// Import auth context
+import { useAuth } from '../contexts/AuthContext';
+import { HomeTabsParamList, RootStackParamList } from './types';
 
-export type HomeTabsParamList = {
-  Home: undefined;
-  Explore: undefined;
-  Create: undefined;
-  Profile: undefined;
-};
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<HomeTabsParamList>();
@@ -90,23 +87,57 @@ const HomeTabsNavigator = () => {
 };
 
 const AppNavigator = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#ff4757" />
+      </View>
+    );
+  }
+
   return (
     <NavigationContainer>
       <Stack.Navigator>
-        <Stack.Screen 
-          name="HomeTabs" 
-          component={HomeTabsNavigator} 
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen 
-          name="EventDetail" 
-          component={EventDetailScreen} 
-          options={{ 
-            headerTitle: 'Détails de l\'événement',
-            headerBackTitleVisible: false,
-            headerTintColor: '#ff4757',
-          }}
-        />
+        {user ? (
+          <>
+            <Stack.Screen 
+              name="HomeTabs" 
+              component={HomeTabsNavigator} 
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen 
+              name="EventDetail" 
+              component={EventDetailScreen} 
+              options={{ 
+                headerTitle: 'Détails de l\'événement',
+                headerTintColor: '#ff4757',
+              }}
+            />
+            <Stack.Screen 
+              name="AdminDashboard" 
+              component={AdminDashboardScreen} 
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen 
+              name="AdminUsers" 
+              component={AdminUsersScreen} 
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen 
+              name="AdminModeration" 
+              component={AdminModerationScreen} 
+              options={{ headerShown: false }}
+            />
+          </>
+        ) : (
+          <Stack.Screen 
+            name="Auth" 
+            component={AuthScreen} 
+            options={{ headerShown: false }}
+          />
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

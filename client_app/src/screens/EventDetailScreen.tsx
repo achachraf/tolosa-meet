@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,16 +9,37 @@ import {
   Share,
   Alert,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
-import { RouteProp } from '@react-navigation/native';
+import { RouteProp, useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { events } from '../data/mockData';
-import { RootStackParamList } from '../navigation/AppNavigator';
+import { RootStackParamList } from '../navigation/types';
 import MapView from '../components/MapView';
+import { apiService } from '../services/apiService';
+import { useAuth } from '../contexts/AuthContext';
 
 type EventDetailScreenRouteProp = RouteProp<RootStackParamList, 'EventDetail'>;
+
+interface Event {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  location: {
+    geoPoint: { latitude: number; longitude: number };
+    address: string;
+  };
+  capacity: number;
+  startTime: string;
+  endTime: string;
+  organizerUid: string;
+  coverImage?: string;
+  createdAt: string;
+  updatedAt: string;
+  status: string;
+}
 
 type Props = {
   route: EventDetailScreenRouteProp;
@@ -26,8 +47,50 @@ type Props = {
 
 const EventDetailScreen = ({ route }: Props) => {
   const { eventId } = route.params;
-  const event = events.find((e) => e.id === eventId);
-  const [isJoined, setIsJoined] = useState(event?.isJoined || false);
+  const navigation = useNavigation();
+  const { user } = useAuth();
+  const [event, setEvent] = useState<Event | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isJoined, setIsJoined] = useState(false);
+  const [attendeeCount, setAttendeeCount] = useState(0);
+
+  useEffect(() => {
+    loadEventDetails();
+  }, [eventId]);
+
+  const loadEventDetails = async () => {
+    try {
+      setLoading(true);
+      const [eventResponse, attendeesResponse] = await Promise.all([
+        apiService.getEvent(eventId),
+        apiService.getEventAttendees(eventId)
+      ]);
+
+      if (eventResponse.success) {
+        setEvent((eventResponse.data as any).event);
+      }
+
+      if (attendeesResponse.success) {
+        const attendees = (attendeesResponse.data as any).attendees;
+        setAttendeeCount(attendees.length);
+        setIsJoined(attendees.some((attendee: any) => attendee.uid === user?.uid));
+      }
+    } catch (error) {
+      console.error('Error loading event details:', error);
+      Alert.alert('Erreur', 'Impossible de charger les détails de l\'événement');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#ff4757" />
+        <Text style={styles.loadingText}>Chargement...</Text>
+      </View>
+    );
+  }
 
   if (!event) {
     return (
@@ -38,11 +101,17 @@ const EventDetailScreen = ({ route }: Props) => {
   }
 
   const handleShare = async () => {
+    if (!event) return;
+    
     try {
+      const eventDate = new Date(event.startTime).toLocaleDateString('fr-FR');
+      const eventTime = new Date(event.startTime).toLocaleTimeString('fr-FR', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+      
       await Share.share({
-        message: `Rejoins-moi à l'événement "${event.title}" le ${new Date(
-          event.date
-        ).toLocaleDateString('fr-FR')} à ${event.time} à ${event.location}!`,
+        message: `Rejoins-moi à l'événement "${event.title}" le ${eventDate} à ${eventTime} à ${event.location.address}!`,
         title: event.title,
       });
     } catch (error) {
@@ -51,13 +120,17 @@ const EventDetailScreen = ({ route }: Props) => {
   };
 
   const handleOpenMaps = () => {
-    const address = encodeURIComponent(event.address);
+    if (!event) return;
+    
+    const address = encodeURIComponent(event.location.address);
     const url = `https://www.google.com/maps/search/?api=1&query=${address}`;
     Linking.openURL(url);
   };
 
-  const handleJoin = () => {
-    if (event.maxAttendees && event.attendees >= event.maxAttendees && !isJoined) {
+  const handleJoin = async () => {
+    if (!event || !user) return;
+
+    if (event.capacity > 0 && attendeeCount >= event.capacity && !isJoined) {
       Alert.alert(
         'Événement complet',
         'Cet événement a atteint sa capacité maximale.',
@@ -66,14 +139,28 @@ const EventDetailScreen = ({ route }: Props) => {
       return;
     }
 
-    setIsJoined(!isJoined);
-    
-    if (!isJoined) {
-      Alert.alert(
-        'Inscription confirmée',
-        `Vous êtes maintenant inscrit à l'événement "${event.title}"`,
-        [{ text: 'OK', style: 'default' }]
-      );
+    try {
+      const response = isJoined 
+        ? await apiService.leaveEvent(event.id)
+        : await apiService.joinEvent(event.id);
+
+      if (response.success) {
+        setIsJoined(!isJoined);
+        setAttendeeCount(prev => isJoined ? prev - 1 : prev + 1);
+        
+        if (!isJoined) {
+          Alert.alert(
+            'Inscription confirmée',
+            `Vous êtes maintenant inscrit à l'événement "${event.title}"`,
+            [{ text: 'OK', style: 'default' }]
+          );
+        }
+      } else {
+        Alert.alert('Erreur', 'Impossible de modifier votre inscription');
+      }
+    } catch (error) {
+      console.error('Error joining/leaving event:', error);
+      Alert.alert('Erreur', 'Impossible de modifier votre inscription');
     }
   };
 
@@ -87,16 +174,37 @@ const EventDetailScreen = ({ route }: Props) => {
     });
   };
 
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  if (!event) {
+    return (
+      <View style={styles.notFoundContainer}>
+        <Text style={styles.notFoundText}>Événement non trouvé</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.imageContainer}>
-        <Image source={{ uri: event.image }} style={styles.image} />
+        {event.coverImage && (
+          <Image source={{ uri: event.coverImage }} style={styles.image} />
+        )}
         <LinearGradient
           colors={['transparent', 'rgba(0,0,0,0.8)']}
           style={styles.gradient}
         />
         <View style={styles.backButtonContainer}>
-          <TouchableOpacity style={styles.iconButton}>
+          <TouchableOpacity 
+            style={styles.iconButton}
+            onPress={() => navigation.goBack()}
+          >
             <MaterialIcons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -111,11 +219,11 @@ const EventDetailScreen = ({ route }: Props) => {
         <View style={styles.dateTimeContainer}>
           <View style={styles.dateContainer}>
             <MaterialIcons name="event" size={22} color="#ff4757" />
-            <Text style={styles.dateText}>{formatDate(event.date)}</Text>
+            <Text style={styles.dateText}>{formatDate(event.startTime)}</Text>
           </View>
           <View style={styles.timeContainer}>
             <MaterialIcons name="access-time" size={22} color="#ff4757" />
-            <Text style={styles.timeText}>{event.time}</Text>
+            <Text style={styles.timeText}>{formatTime(event.startTime)}</Text>
           </View>
         </View>
 
@@ -124,7 +232,7 @@ const EventDetailScreen = ({ route }: Props) => {
         <View style={styles.organizerRow}>
           <MaterialIcons name="group" size={20} color="#666" />
           <Text style={styles.organizerText}>
-            Organisé par <Text style={styles.organizerName}>{event.organizer}</Text>
+            Organisé par <Text style={styles.organizerName}>Organisateur</Text>
           </Text>
         </View>
 
@@ -134,16 +242,16 @@ const EventDetailScreen = ({ route }: Props) => {
         >
           <View style={styles.locationHeader}>
             <MaterialIcons name="location-on" size={22} color="#ff4757" />
-            <Text style={styles.locationName}>{event.location}</Text>
+            <Text style={styles.locationName}>Lieu</Text>
             <MaterialIcons name="navigate-next" size={20} color="#666" />
           </View>
-          <Text style={styles.locationAddress}>{event.address}</Text>
+          <Text style={styles.locationAddress}>{event.location.address}</Text>
         </TouchableOpacity>
         
         <View style={styles.mapContainer}>
           <MapView
-            address={event.address}
-            markerTitle={event.location}
+            address={event.location.address}
+            markerTitle="Lieu de l'événement"
             showUserLocation={true}
           />
         </View>
@@ -151,21 +259,21 @@ const EventDetailScreen = ({ route }: Props) => {
         <View style={styles.attendeesContainer}>
           <Text style={styles.attendeesTitle}>Participants</Text>
           <View style={styles.attendeesBadges}>
-            {[...Array(5)].map((_, i) => (
+            {[...Array(Math.min(5, attendeeCount))].map((_, i) => (
               <View key={i} style={[styles.attendeeBadge, { zIndex: 5 - i }]}>
                 <Text style={styles.attendeeInitial}>
                   {String.fromCharCode(65 + i)}
                 </Text>
               </View>
             ))}
-            {event.attendees > 5 && (
+            {attendeeCount > 5 && (
               <View style={[styles.attendeeBadge, styles.moreAttendeeBadge]}>
-                <Text style={styles.moreAttendeesText}>+{event.attendees - 5}</Text>
+                <Text style={styles.moreAttendeesText}>+{attendeeCount - 5}</Text>
               </View>
             )}
           </View>
           <Text style={styles.attendeesCount}>
-            {event.attendees} {event.maxAttendees ? `sur ${event.maxAttendees}` : ''} participants
+            {attendeeCount} {event.capacity > 0 ? `sur ${event.capacity}` : ''} participants
           </Text>
         </View>
 
@@ -177,20 +285,19 @@ const EventDetailScreen = ({ route }: Props) => {
         <View style={styles.priceContainer}>
           <View>
             <Text style={styles.priceLabel}>Prix</Text>
-            <Text style={styles.priceValue}>
-              {event.price === 0 ? 'Gratuit' : `${event.price}€`}
-            </Text>
+            <Text style={styles.priceValue}>Gratuit</Text>
           </View>
           
           <TouchableOpacity
             style={[
               styles.joinButton,
               isJoined ? styles.leaveButton : null,
-              event.maxAttendees && event.attendees >= event.maxAttendees && !isJoined
+              event.capacity > 0 && attendeeCount >= event.capacity && !isJoined
                 ? styles.disabledButton
                 : null,
             ]}
             onPress={handleJoin}
+            disabled={event.capacity > 0 && attendeeCount >= event.capacity && !isJoined}
           >
             <Text style={[
               styles.joinButtonText,
@@ -216,6 +323,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   notFoundText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  loadingText: {
+    marginTop: 10,
     fontSize: 16,
     color: '#666',
   },

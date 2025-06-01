@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,25 +10,54 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
-import { categories } from '../data/mockData';
+import { useNavigation } from '@react-navigation/native';
+
+import { apiService } from '../services/apiService';
+import { useAuth } from '../contexts/AuthContext';
+
+interface Category {
+  slug: string;
+  nameFr: string;
+  nameEn: string;
+}
 
 const CreateEventScreen = () => {
+  const navigation = useNavigation();
+  const { user } = useAuth();
+  
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
-  const [location, setLocation] = useState('');
+  const [locationName, setLocationName] = useState('');
   const [address, setAddress] = useState('');
   const [category, setCategory] = useState('');
-  const [price, setPrice] = useState('');
-  const [maxAttendees, setMaxAttendees] = useState('');
+  const [capacity, setCapacity] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
 
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  const loadCategories = async () => {
+    try {
+      const response = await apiService.getCategories();
+      if (response.success) {
+        setCategories((response.data as any).categories);
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
+
   const validateForm = () => {
-    if (!title || !description || !date || !time || !location || !address || !category) {
+    if (!title || !description || !date || !time || !locationName || !address || !category) {
       Alert.alert('Champs obligatoires', 'Veuillez remplir tous les champs obligatoires.');
       return false;
     }
@@ -47,33 +76,76 @@ const CreateEventScreen = () => {
       return false;
     }
     
+    // Validate future date
+    const eventDateTime = new Date(`${date}T${time}`);
+    if (eventDateTime <= new Date()) {
+      Alert.alert('Date invalide', 'L\'événement doit être dans le futur.');
+      return false;
+    }
+    
     return true;
   };
 
-  const handleCreateEvent = () => {
-    if (validateForm()) {
-      // In a real app, we would send this data to a backend
-      Alert.alert(
-        'Événement créé',
-        'Votre événement a été créé avec succès!',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Reset form
-              setTitle('');
-              setDescription('');
-              setDate('');
-              setTime('');
-              setLocation('');
-              setAddress('');
-              setCategory('');
-              setPrice('');
-              setMaxAttendees('');
+  const handleCreateEvent = async () => {
+    if (!validateForm()) return;
+    
+    if (!user) {
+      Alert.alert('Erreur', 'Vous devez être connecté pour créer un événement.');
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      const startTime = new Date(`${date}T${time}:00.000Z`).toISOString();
+      const endTime = new Date(`${date}T${time}:00.000Z`);
+      endTime.setHours(endTime.getHours() + 2); // Default 2-hour duration
+
+      const eventData = {
+        title,
+        description,
+        category,
+        location: {
+          geoPoint: { latitude: 43.6047, longitude: 1.4442 }, // Default Toulouse coordinates
+          address,
+        },
+        capacity: capacity ? parseInt(capacity) : 0,
+        startTime,
+        endTime: endTime.toISOString(),
+      };
+
+      const response = await apiService.createEvent(eventData);
+      
+      if (response.success) {
+        Alert.alert(
+          'Événement créé',
+          'Votre événement a été créé avec succès!',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Reset form
+                setTitle('');
+                setDescription('');
+                setDate('');
+                setTime('');
+                setLocationName('');
+                setAddress('');
+                setCategory('');
+                setCapacity('');
+                navigation.goBack();
+              },
             },
-          },
-        ]
-      );
+          ]
+        );
+      } else {
+        Alert.alert('Erreur', 'Impossible de créer l\'événement. Veuillez réessayer.');
+      }
+    } catch (error) {
+      console.error('Error creating event:', error);
+      Alert.alert('Erreur', 'Impossible de créer l\'événement. Veuillez réessayer.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -142,8 +214,8 @@ const CreateEventScreen = () => {
             <Text style={styles.inputLabel}>Lieu *</Text>
             <TextInput
               style={styles.textInput}
-              value={location}
-              onChangeText={setLocation}
+              value={locationName}
+              onChangeText={setLocationName}
               placeholder="Nom de l'établissement, parc, etc."
             />
           </View>
@@ -178,42 +250,30 @@ const CreateEventScreen = () => {
               <View style={styles.categoryPicker}>
                 {categories.map((cat) => (
                   <TouchableOpacity
-                    key={cat.id}
+                    key={cat.slug}
                     style={styles.categoryItem}
                     onPress={() => {
-                      setCategory(cat.name);
+                      setCategory(cat.slug);
                       setShowCategoryPicker(false);
                     }}
                   >
-                    <MaterialIcons name={cat.icon as any} size={20} color="#666" />
-                    <Text style={styles.categoryText}>{cat.name}</Text>
+                    <MaterialIcons name="category" size={20} color="#666" />
+                    <Text style={styles.categoryText}>{cat.nameFr}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             )}
           </View>
           
-          <View style={styles.formRow}>
-            <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.inputLabel}>Prix (€)</Text>
-              <TextInput
-                style={styles.textInput}
-                value={price}
-                onChangeText={setPrice}
-                placeholder="0 pour gratuit"
-                keyboardType="numeric"
-              />
-            </View>
-            <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
-              <Text style={styles.inputLabel}>Participants max</Text>
-              <TextInput
-                style={styles.textInput}
-                value={maxAttendees}
-                onChangeText={setMaxAttendees}
-                placeholder="Vide = illimité"
-                keyboardType="numeric"
-              />
-            </View>
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>Participants max</Text>
+            <TextInput
+              style={styles.textInput}
+              value={capacity}
+              onChangeText={setCapacity}
+              placeholder="Vide = illimité"
+              keyboardType="numeric"
+            />
           </View>
           
           <View style={styles.uploadSection}>
@@ -225,10 +285,15 @@ const CreateEventScreen = () => {
           </View>
           
           <TouchableOpacity 
-            style={styles.createButton}
+            style={[styles.createButton, loading && styles.disabledButton]}
             onPress={handleCreateEvent}
+            disabled={loading}
           >
-            <Text style={styles.createButtonText}>Créer l'événement</Text>
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.createButtonText}>Créer l'événement</Text>
+            )}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -352,6 +417,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: 16,
+  },
+  disabledButton: {
+    backgroundColor: '#ccc',
   },
   createButtonText: {
     color: '#fff',

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,57 +8,151 @@ import {
   TouchableOpacity,
   FlatList,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { RootStackParamList } from '../navigation/AppNavigator';
-import { events } from '../data/mockData';
+import { RootStackParamList } from '../navigation/types';
+import { useAuth } from '../contexts/AuthContext';
+import { apiService } from '../services/apiService';
 
 type ProfileScreenNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
   'HomeTabs'
 >;
 
+interface Event {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  location: {
+    geoPoint: { latitude: number; longitude: number };
+    address: string;
+  };
+  capacity: number;
+  startTime: string;
+  endTime: string;
+  organizerUid: string;
+  coverImage?: string;
+  createdAt: string;
+  updatedAt: string;
+  status: string;
+}
+
 const ProfileScreen = () => {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
+  const { user, signOut } = useAuth();
+  
+  const [attendingEvents, setAttendingEvents] = useState<Event[]>([]);
+  const [createdEvents, setCreatedEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock user data
-  const user = {
-    name: 'Thomas Dubois',
-    email: 'thomas.dubois@email.com',
-    avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=300',
-    joinedDate: 'Avril 2023',
+  useEffect(() => {
+    if (user) {
+      loadUserEvents();
+    }
+  }, [user]);
+
+  const loadUserEvents = async () => {
+    try {
+      setLoading(true);
+      const [attendingResponse, createdResponse] = await Promise.all([
+        apiService.getUserEvents('attending'),
+        apiService.getUserEvents('organized')
+      ]);
+
+      if (attendingResponse.success) {
+        setAttendingEvents((attendingResponse.data as any).events);
+      }
+
+      if (createdResponse.success) {
+        setCreatedEvents((createdResponse.data as any).events);
+      }
+    } catch (error) {
+      console.error('Error loading user events:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Get events the user is attending (where isJoined is true)
-  const attendingEvents = events.filter((event) => event.isJoined);
+  const handleSignOut = () => {
+    Alert.alert(
+      'Déconnexion',
+      'Êtes-vous sûr de vouloir vous déconnecter ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { 
+          text: 'Déconnexion', 
+          style: 'destructive',
+          onPress: signOut
+        }
+      ]
+    );
+  };
   
-  // Get events the user has created (mock data - in a real app this would come from backend)
-  const createdEvents = [events[0], events[3]]; // Just using a couple events as examples
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'short',
+    });
+  };
+
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
   
-  const renderEventItem = ({ item }) => (
+  const renderEventItem = ({ item }: { item: Event }) => (
     <TouchableOpacity
       style={styles.eventCard}
       onPress={() => navigation.navigate('EventDetail', { eventId: item.id })}
     >
-      <Image source={{ uri: item.image }} style={styles.eventImage} />
+      {item.coverImage && (
+        <Image source={{ uri: item.coverImage }} style={styles.eventImage} />
+      )}
       <View style={styles.eventContent}>
         <Text style={styles.eventTitle} numberOfLines={1}>{item.title}</Text>
         <View style={styles.eventDetails}>
           <MaterialIcons name="event" size={14} color="#666" />
           <Text style={styles.eventDate}>
-            {new Date(item.date).toLocaleDateString('fr-FR', {
-              day: 'numeric',
-              month: 'short',
-            })}
+            {formatDate(item.startTime)} • {formatTime(item.startTime)}
+          </Text>
+        </View>
+        <View style={styles.eventLocation}>
+          <MaterialIcons name="location-on" size={14} color="#666" />
+          <Text style={styles.eventLocationText} numberOfLines={1}>
+            {item.location.address}
           </Text>
         </View>
       </View>
     </TouchableOpacity>
   );
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#ff4757" />
+        <Text style={styles.loadingText}>Chargement...</Text>
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Utilisateur non connecté</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -77,11 +171,21 @@ const ProfileScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.profileHeader}>
-          <Image source={{ uri: user.avatar }} style={styles.avatar} />
+          <View style={styles.avatarContainer}>
+            <MaterialIcons name="account-circle" size={80} color="#ccc" />
+          </View>
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>{user.name}</Text>
+            <Text style={styles.userName}>{user.displayName || user.email}</Text>
             <Text style={styles.userEmail}>{user.email}</Text>
-            <Text style={styles.userJoinedDate}>Membre depuis {user.joinedDate}</Text>
+            <Text style={styles.userJoinedDate}>
+              Membre depuis {user.joinedAt ? 
+                new Date(user.joinedAt).toLocaleDateString('fr-FR', { 
+                  month: 'long', 
+                  year: 'numeric' 
+                }) : 
+                'récemment'
+              }
+            </Text>
           </View>
         </View>
 
@@ -102,6 +206,15 @@ const ProfileScreen = () => {
 
         <TouchableOpacity style={styles.editButton}>
           <Text style={styles.editButtonText}>Modifier le profil</Text>
+        </TouchableOpacity>
+
+        {/* Admin access button - for testing purposes, showing for all users */}
+        <TouchableOpacity 
+          style={styles.adminButton}
+          onPress={() => navigation.navigate('AdminDashboard')}
+        >
+          <MaterialIcons name="admin-panel-settings" size={20} color="#fff" />
+          <Text style={styles.adminButtonText}>Administration</Text>
         </TouchableOpacity>
 
         <View style={styles.sectionContainer}>
@@ -147,7 +260,7 @@ const ProfileScreen = () => {
         </View>
 
         <View style={styles.logoutContainer}>
-          <TouchableOpacity style={styles.logoutButton}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
             <MaterialIcons name="exit-to-app" size={20} color="#ff4757" />
             <Text style={styles.logoutText}>Déconnexion</Text>
           </TouchableOpacity>
@@ -187,6 +300,17 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 40,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+  },
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -198,6 +322,14 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
+  },
+  avatarContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
   },
   userInfo: {
     marginLeft: 16,
@@ -306,6 +438,16 @@ const styles = StyleSheet.create({
     color: '#666',
     marginLeft: 4,
   },
+  eventLocation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  eventLocationText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 4,
+  },
   emptyState: {
     alignItems: 'center',
     padding: 24,
@@ -335,6 +477,28 @@ const styles = StyleSheet.create({
     color: '#ff4757',
     fontSize: 16,
     fontWeight: '500',
+    marginLeft: 8,
+  },
+  adminButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3498db',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginTop: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  adminButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
     marginLeft: 8,
   },
 });
