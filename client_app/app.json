@@ -27,7 +27,10 @@
         "backgroundColor": "#ff4757"
       },
       "package": "com.tls.events",
-      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -39,6 +42,18 @@
           "locationAlwaysAndWhenInUsePermission": "Permettez à TlsEvent d'accéder à votre position pour trouver des événements près de chez vous à Toulouse."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "96a0c251-fe58-4c69-8b45-48b4b9bc9f8b"
+      }
+    },
+    "owner": "achachraf",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/96a0c251-fe58-4c69-8b45-48b4b9bc9f8b"
+    }
   }
 }

@@ -253,6 +253,8 @@ const EventDetailScreen = ({ route }: Props) => {
             address={event.location.address}
             markerTitle="Lieu de l'événement"
             showUserLocation={true}
+            latitude={event.location.geoPoint.latitude}
+            longitude={event.location.geoPoint.longitude}
           />
         </View>
 
