@@ -11,29 +11,34 @@ import {
   Image,
   Modal,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { apiService } from '../services/apiService';
 
 interface Event {
   id: string;
   title: string;
   description: string;
-  image: string;
-  date: string;
-  time: string;
-  location: string;
-  address: string;
   category: string;
-  organizer: string;
-  attendees: number;
-  maxAttendees?: number;
-  price: number;
-  isFlagged: boolean;
-  flagReasons: string[];
-  flaggedBy: string[];
+  location: {
+    geoPoint: { latitude: number; longitude: number };
+    address: string;
+  };
+  capacity: number;
+  startTime: string;
+  endTime: string;
+  organizerUid: string;
+  coverImage?: string;
   createdAt: string;
+  updatedAt: string;
+  status: string;
+  attendeeCount?: number;
+  isFlagged?: boolean;
+  flagReasons?: string[];
+  flaggedBy?: string[];
 }
 
 const AdminModerationScreen = () => {
@@ -41,76 +46,27 @@ const AdminModerationScreen = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [filter, setFilter] = useState<'all' | 'flagged' | 'recent'>('flagged');
 
   const loadEvents = async () => {
     try {
-      // In a real app, this would fetch from your admin API
-      // For now, using mock data
-      const mockEvents: Event[] = [
-        {
-          id: '1',
-          title: 'Concert de Jazz au Capitole',
-          description: 'Venez découvrir les meilleurs artistes de jazz de Toulouse dans un cadre exceptionnel.',
-          image: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=500',
-          date: '2024-02-15',
-          time: '20:00',
-          location: 'Théâtre du Capitole',
-          address: 'Place du Capitole, 31000 Toulouse',
-          category: 'Musique',
-          organizer: 'Marie Martin',
-          attendees: 45,
-          maxAttendees: 200,
-          price: 25,
-          isFlagged: true,
-          flagReasons: ['Contenu inapproprié', 'Prix suspect'],
-          flaggedBy: ['user123', 'user456'],
-          createdAt: '2024-01-20',
-        },
-        {
-          id: '2',
-          title: 'Randonnée dans les Pyrénées',
-          description: 'Une magnifique randonnée d\'une journée dans les montagnes.',
-          image: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=500',
-          date: '2024-02-20',
-          time: '08:00',
-          location: 'Départ parking Blagnac',
-          address: 'Parking de Blagnac, 31700 Blagnac',
-          category: 'Sport',
-          organizer: 'Pierre Leclerc',
-          attendees: 12,
-          maxAttendees: 20,
-          price: 0,
-          isFlagged: true,
-          flagReasons: ['Localisation douteuse'],
-          flaggedBy: ['user789'],
-          createdAt: '2024-01-25',
-        },
-        {
-          id: '3',
-          title: 'Atelier cuisine végétarienne',
-          description: 'Apprenez à cuisiner de délicieux plats végétariens avec un chef professionnel.',
-          image: 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=500',
-          date: '2024-02-18',
-          time: '14:00',
-          location: 'École de cuisine Le Gourmand',
-          address: 'Rue de la République, 31000 Toulouse',
-          category: 'Gastronomie',
-          organizer: 'Sophie Bernard',
-          attendees: 8,
-          maxAttendees: 15,
-          price: 35,
-          isFlagged: false,
-          flagReasons: [],
-          flaggedBy: [],
-          createdAt: '2024-01-28',
-        },
-      ];
-      setEvents(mockEvents);
+      setLoading(true);
+      const response = await apiService.getAllEventsForModeration(filter === 'all' ? undefined : filter);
+      
+      if (response.success && response.data) {
+        const eventsData = (response.data as any).events || [];
+        setEvents(eventsData);
+      } else {
+        Alert.alert('Erreur', 'Impossible de charger les événements pour la modération');
+      }
     } catch (error) {
+      console.error('Error loading events for moderation:', error);
       Alert.alert('Erreur', 'Impossible de charger les événements');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -156,10 +112,14 @@ const AdminModerationScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              // In a real app, call your admin API
-              setEvents(prev => prev.filter(event => event.id !== eventId));
-              setShowEventModal(false);
-              Alert.alert('Succès', 'Événement supprimé');
+              const response = await apiService.adminDeleteEvent(eventId, 'Supprimé par l\'administrateur');
+              if (response.success) {
+                setEvents(prev => prev.filter(event => event.id !== eventId));
+                setShowEventModal(false);
+                Alert.alert('Succès', 'Événement supprimé');
+              } else {
+                Alert.alert('Erreur', 'Impossible de supprimer l\'événement');
+              }
             } catch (error) {
               Alert.alert('Erreur', 'Impossible de supprimer l\'événement');
             }
@@ -171,23 +131,27 @@ const AdminModerationScreen = () => {
 
   const handleUnflagEvent = async (eventId: string) => {
     try {
-      // In a real app, call your admin API
-      setEvents(prev => prev.map(event =>
-        event.id === eventId 
-          ? { ...event, isFlagged: false, flagReasons: [], flaggedBy: [] }
-          : event
-      ));
-      setShowEventModal(false);
-      Alert.alert('Succès', 'Signalement retiré');
+      const response = await apiService.unflagEvent(eventId);
+      if (response.success) {
+        setEvents(prev => prev.map(event =>
+          event.id === eventId 
+            ? { ...event, isFlagged: false, flagReasons: [], flaggedBy: [] }
+            : event
+        ));
+        setShowEventModal(false);
+        Alert.alert('Succès', 'Signalement retiré');
+      } else {
+        Alert.alert('Erreur', 'Impossible de retirer le signalement');
+      }
     } catch (error) {
       Alert.alert('Erreur', 'Impossible de retirer le signalement');
     }
   };
 
-  const handleContactOrganizer = (organizer: string) => {
+  const handleContactOrganizer = (organizerUid: string) => {
     Alert.alert(
       'Contacter l\'organisateur',
-      `Souhaitez-vous envoyer un message à ${organizer} ?`,
+      `Souhaitez-vous envoyer un message à l'organisateur ?`,
       [
         { text: 'Annuler', style: 'cancel' },
         { text: 'Envoyer', onPress: () => {
@@ -218,6 +182,17 @@ const AdminModerationScreen = () => {
     </TouchableOpacity>
   );
 
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('fr-FR');
+  };
+
+  const formatTime = (dateString: string) => {
+    return new Date(dateString).toLocaleTimeString('fr-FR', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
   const EventCard = ({ event }: { event: Event }) => (
     <TouchableOpacity
       style={[styles.eventCard, event.isFlagged && styles.eventCardFlagged]}
@@ -226,7 +201,9 @@ const AdminModerationScreen = () => {
         setShowEventModal(true);
       }}
     >
-      <Image source={{ uri: event.image }} style={styles.eventImage} />
+      {event.coverImage && (
+        <Image source={{ uri: event.coverImage }} style={styles.eventImage} />
+      )}
       <View style={styles.eventContent}>
         <View style={styles.eventHeader}>
           <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
@@ -238,32 +215,32 @@ const AdminModerationScreen = () => {
           )}
         </View>
         
-        <Text style={styles.eventOrganizer}>Par {event.organizer}</Text>
+        <Text style={styles.eventOrganizer}>Organisateur: {event.organizerUid}</Text>
         
         <View style={styles.eventDetails}>
           <View style={styles.eventDetailRow}>
             <MaterialIcons name="event" size={14} color="#666" />
             <Text style={styles.eventDetailText}>
-              {new Date(event.date).toLocaleDateString('fr-FR')} à {event.time}
+              {formatDate(event.startTime)} à {formatTime(event.startTime)}
             </Text>
           </View>
           
           <View style={styles.eventDetailRow}>
             <MaterialIcons name="location-on" size={14} color="#666" />
             <Text style={styles.eventDetailText} numberOfLines={1}>
-              {event.location}
+              {event.location.address}
             </Text>
           </View>
           
           <View style={styles.eventDetailRow}>
             <MaterialIcons name="people" size={14} color="#666" />
             <Text style={styles.eventDetailText}>
-              {event.attendees} participant{event.attendees > 1 ? 's' : ''}
+              {event.attendeeCount || 0} participant{(event.attendeeCount || 0) > 1 ? 's' : ''}
             </Text>
           </View>
         </View>
 
-        {event.isFlagged && event.flagReasons.length > 0 && (
+        {event.isFlagged && event.flagReasons && event.flagReasons.length > 0 && (
           <View style={styles.flagReasons}>
             <Text style={styles.flagReasonsTitle}>Raisons du signalement:</Text>
             {event.flagReasons.map((reason, index) => (
@@ -296,7 +273,9 @@ const AdminModerationScreen = () => {
           </View>
 
           <ScrollView style={styles.modalContent}>
-            <Image source={{ uri: selectedEvent.image }} style={styles.modalEventImage} />
+            {selectedEvent.coverImage && (
+              <Image source={{ uri: selectedEvent.coverImage }} style={styles.modalEventImage} />
+            )}
             
             <View style={styles.modalEventInfo}>
               <View style={styles.modalEventHeader}>
@@ -314,19 +293,19 @@ const AdminModerationScreen = () => {
               <View style={styles.modalEventDetails}>
                 <View style={styles.modalDetailRow}>
                   <MaterialIcons name="person" size={20} color="#666" />
-                  <Text style={styles.modalDetailText}>Organisé par {selectedEvent.organizer}</Text>
+                  <Text style={styles.modalDetailText}>Organisé par {selectedEvent.organizerUid}</Text>
                 </View>
                 
                 <View style={styles.modalDetailRow}>
                   <MaterialIcons name="event" size={20} color="#666" />
                   <Text style={styles.modalDetailText}>
-                    {new Date(selectedEvent.date).toLocaleDateString('fr-FR')} à {selectedEvent.time}
+                    {formatDate(selectedEvent.startTime)} à {formatTime(selectedEvent.startTime)}
                   </Text>
                 </View>
                 
                 <View style={styles.modalDetailRow}>
                   <MaterialIcons name="location-on" size={20} color="#666" />
-                  <Text style={styles.modalDetailText}>{selectedEvent.location}</Text>
+                  <Text style={styles.modalDetailText}>{selectedEvent.location.address}</Text>
                 </View>
                 
                 <View style={styles.modalDetailRow}>
@@ -335,26 +314,28 @@ const AdminModerationScreen = () => {
                 </View>
                 
                 <View style={styles.modalDetailRow}>
-                  <MaterialIcons name="euro" size={20} color="#666" />
+                  <MaterialIcons name="people" size={20} color="#666" />
                   <Text style={styles.modalDetailText}>
-                    {selectedEvent.price === 0 ? 'Gratuit' : `${selectedEvent.price}€`}
+                    Capacité: {selectedEvent.capacity} personne{selectedEvent.capacity > 1 ? 's' : ''}
                   </Text>
                 </View>
               </View>
 
-              {selectedEvent.isFlagged && (
+              {selectedEvent.isFlagged && selectedEvent.flaggedBy && selectedEvent.flaggedBy.length > 0 && (
                 <View style={styles.modalFlagInfo}>
                   <Text style={styles.modalFlagTitle}>Signalements reçus:</Text>
                   <Text style={styles.modalFlagCount}>
                     {selectedEvent.flaggedBy.length} utilisateur{selectedEvent.flaggedBy.length > 1 ? 's ont' : ' a'} signalé cet événement
                   </Text>
-                  <View style={styles.modalFlagReasons}>
-                    {selectedEvent.flagReasons.map((reason, index) => (
-                      <View key={index} style={styles.modalFlagReasonChip}>
-                        <Text style={styles.modalFlagReasonText}>{reason}</Text>
-                      </View>
-                    ))}
-                  </View>
+                  {selectedEvent.flagReasons && (
+                    <View style={styles.modalFlagReasons}>
+                      {selectedEvent.flagReasons.map((reason, index) => (
+                        <View key={index} style={styles.modalFlagReasonChip}>
+                          <Text style={styles.modalFlagReasonText}>{reason}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
               )}
             </View>
@@ -364,7 +345,7 @@ const AdminModerationScreen = () => {
                 style={[styles.actionButton, styles.contactButton]}
                 onPress={() => {
                   setShowEventModal(false);
-                  handleContactOrganizer(selectedEvent.organizer);
+                  handleContactOrganizer(selectedEvent.organizerUid);
                 }}
               >
                 <MaterialIcons name="message" size={20} color="#fff" />
@@ -394,6 +375,18 @@ const AdminModerationScreen = () => {
       </Modal>
     );
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#ff4757" />
+          <Text style={styles.loadingText}>Chargement des événements...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -461,6 +454,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
   },
   header: {
     flexDirection: 'row',

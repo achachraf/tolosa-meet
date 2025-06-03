@@ -192,6 +192,28 @@ class ApiService {
     });
   }
 
+  async getAllEventsForModeration(status?: string, limit?: number, offset?: number) {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (limit) params.append('limit', limit.toString());
+    if (offset) params.append('offset', offset.toString());
+    
+    return this.request(`/admin/events/moderation?${params.toString()}`);
+  }
+
+  async adminDeleteEvent(eventId: string, reason?: string) {
+    return this.request(`/admin/events/${eventId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async unflagEvent(eventId: string) {
+    return this.request(`/admin/events/${eventId}/unflag`, {
+      method: 'POST',
+    });
+  }
+
   // Storage helpers
   async saveToken(token: string): Promise<void> {
     await AsyncStorage.setItem('authToken', token);
