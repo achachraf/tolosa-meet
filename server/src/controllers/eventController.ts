@@ -198,10 +198,10 @@ export class EventController {
 
   async getAllEventsForModeration(req: Request, res: Response) {
     try {
-      const { status, limit = '50', offset = '0' } = req.query;
+      const { filter, limit = '50', offset = '0' } = req.query;
       
       const events = await eventService.getAllEventsForModeration(
-        status as string,
+        filter as string,
         parseInt(limit as string),
         parseInt(offset as string)
       );
@@ -228,6 +228,24 @@ export class EventController {
       res.json({
         success: true,
         message: 'Event flagged for review'
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async unflagEvent(req: Request, res: Response) {
+    try {
+      const { eventId } = req.params;
+      
+      await eventService.unflagEvent(eventId);
+      
+      res.json({
+        success: true,
+        message: 'Event unflagged successfully'
       });
     } catch (error: any) {
       res.status(400).json({

@@ -22,5 +22,6 @@ router.post('/:eventId/flag', authenticateToken, eventController.flagEvent);
 // Admin-only routes
 router.get('/admin/moderation', authenticateToken, requireAdmin, eventController.getAllEventsForModeration);
 router.delete('/admin/:eventId', authenticateToken, requireAdmin, eventController.adminDeleteEvent);
+router.post('/admin/:eventId/unflag', authenticateToken, requireAdmin, eventController.unflagEvent);
 
 export default router;

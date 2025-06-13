@@ -295,14 +295,29 @@ export class EventService {
   }
 
   async getAllEventsForModeration(
-    status?: string,
+    filter?: string,
     limit: number = 50,
     offset: number = 0
   ): Promise<Event[]> {
     let query = this.eventsCollection.orderBy('createdAt', 'desc');
 
-    if (status && status !== 'all') {
-      query = query.where('status', '==', status);
+    // Handle different filter types for moderation
+    if (filter && filter !== 'all') {
+      switch (filter) {
+        case 'flagged':
+          query = query.where('flagged', '==', true);
+          break;
+        case 'recent':
+          // Get events from the last 7 days
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          query = query.where('createdAt', '>=', sevenDaysAgo);
+          break;
+        default:
+          // If it's not a recognized filter, treat it as event status
+          query = query.where('status', '==', filter);
+          break;
+      }
     }
 
     const snapshot = await query.limit(limit).offset(offset).get();
@@ -331,5 +346,38 @@ export class EventService {
       status: 'pending',
       createdAt: new Date()
     });
+
+    // Also mark the event as flagged
+    const eventRef = this.eventsCollection.doc(eventId);
+    await eventRef.update({
+      flagged: true,
+      updatedAt: new Date()
+    });
+  }
+
+  async unflagEvent(eventId: string): Promise<void> {
+    // Mark event as unflagged
+    const eventRef = this.eventsCollection.doc(eventId);
+    await eventRef.update({
+      flagged: false,
+      updatedAt: new Date()
+    });
+
+    // Resolve all pending reports for this event
+    const reportsRef = db.collection('reports');
+    const reportsSnapshot = await reportsRef
+      .where('eventId', '==', eventId)
+      .where('status', '==', 'pending')
+      .get();
+
+    const batch = db.batch();
+    reportsSnapshot.docs.forEach(doc => {
+      batch.update(doc.ref, {
+        status: 'resolved',
+        resolvedAt: new Date()
+      });
+    });
+
+    await batch.commit();
   }
 }
