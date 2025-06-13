@@ -30,6 +30,8 @@ class ApiService {
         ...options,
         headers: {
           ...headers,
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
           ...options.headers,
         },
       });
@@ -192,24 +194,24 @@ class ApiService {
     });
   }
 
-  async getAllEventsForModeration(status?: string, limit?: number, offset?: number) {
+  async getAllEventsForModeration(filter?: string, limit?: number, offset?: number) {
     const params = new URLSearchParams();
-    if (status) params.append('status', status);
+    if (filter) params.append('filter', filter);
     if (limit) params.append('limit', limit.toString());
     if (offset) params.append('offset', offset.toString());
     
-    return this.request(`/admin/events/moderation?${params.toString()}`);
+    return this.request(`/events/admin/moderation`);
   }
 
   async adminDeleteEvent(eventId: string, reason?: string) {
-    return this.request(`/admin/events/${eventId}`, {
+    return this.request(`/events/admin/${eventId}`, {
       method: 'DELETE',
       body: JSON.stringify({ reason }),
     });
   }
 
   async unflagEvent(eventId: string) {
-    return this.request(`/admin/events/${eventId}/unflag`, {
+    return this.request(`/events/admin/${eventId}/unflag`, {
       method: 'POST',
     });
   }

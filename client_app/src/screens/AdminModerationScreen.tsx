@@ -72,28 +72,12 @@ const AdminModerationScreen = () => {
 
   useEffect(() => {
     loadEvents();
-  }, []);
+  }, [filter]); // Reload events when filter changes
 
   useEffect(() => {
-    let filtered = events;
-
-    switch (filter) {
-      case 'flagged':
-        filtered = events.filter(event => event.isFlagged);
-        break;
-      case 'recent':
-        filtered = events.sort((a, b) => 
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        ).slice(0, 10);
-        break;
-      case 'all':
-      default:
-        filtered = events;
-        break;
-    }
-
-    setFilteredEvents(filtered);
-  }, [events, filter]);
+    // No need for client-side filtering since server handles it
+    setFilteredEvents(events);
+  }, [events]);
 
   const onRefresh = async () => {
     setRefreshing(true);
